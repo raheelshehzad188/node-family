@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live Heading Update</title>
+</head>
+<body>
+  <h1 id="mainHeading">Loading...</h1>
+
+  <input type="text" id="headingInput" placeholder="Enter heading">
+  <button onclick="sendHeading()">Update</button>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    const socket = io("http://localhost:3000");
+
+    function sendHeading() {
+      const newHeading = document.getElementById("headingInput").value;
+      socket.emit("change_heading", newHeading);
+    }
+
+    socket.on("update_heading", function(data) {
+      document.getElementById("mainHeading").innerText = data;
+    });
+  </script>
+</body>
+</html>
