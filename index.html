@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="chatApp">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AngularJS Group Chat Login</title>
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <!-- AngularJS -->
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+</head>
+<body ng-controller="MainCtrl">
+  <div class="container mt-5">
+    <!-- Login Screen -->
+    <div ng-show="!isLoggedIn">
+      <div class="row justify-content-center">
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-body">
+              <h4 class="card-title text-center mb-4">Login</h4>
+              <form ng-submit="login()">
+                <div class="form-group">
+                  <label for="email">Email</label>
+                  <input type="email" class="form-control" id="email" ng-model="loginData.email" required>
+                </div>
+                <div class="form-group">
+                  <label for="password">Password</label>
+                  <input type="password" class="form-control" id="password" ng-model="loginData.password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Login</button>
+                <div class="text-danger mt-2" ng-if="loginError">{{loginError}}</div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Group Chat Screen -->
+    <div ng-show="isLoggedIn">
+      <h3>Welcome to Group Chat, {{userId}}!</h3>
+      <div class="card mt-4" style="max-width: 600px; margin:auto;">
+        <div class="card-header">Group Chat</div>
+        <div class="card-body" style="height: 300px; overflow-y: auto; background: #f8f9fa;">
+          <div ng-if="messages.length === 0" class="text-muted text-center">No messages yet.</div>
+          <div ng-repeat="msg in messages track by $index"
+               ng-class="{'text-left': msg.uid === userId, 'text-right': msg.uid !== userId, 'my-msg': msg.uid === userId, 'other-msg': msg.uid !== userId}">
+            <strong>{{msg.uid}}:</strong> <span>{{msg.msg}}</span>
+            <span class="text-muted small float-right">{{msg.time}}</span>
+          </div>
+        </div>
+        <div class="card-footer p-2">
+          <form ng-submit="sendMessage()" class="form-inline">
+            <input type="text" class="form-control mr-2 flex-grow-1" style="width:70%" placeholder="Type your message..." ng-model="newMessage" required autocomplete="off">
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+      </div>
+      <button class="btn btn-secondary mt-3" ng-click="logout()">Logout</button>
+    </div>
+  </div>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    const socket = io("http://localhost:3000");
+  </script>
+  <script>
+    var app = angular.module('chatApp', []);
+    app.controller('MainCtrl', function($scope, $http, $timeout) {
+      $scope.loginData = {};
+      $scope.isLoggedIn = false;
+      $scope.userId = null;
+      $scope.loginError = '';
+
+      // Group chat messages
+      $scope.messages = [];
+      $scope.newMessage = '';
+
+      // === CONFIGURATION ===
+      // Set your API key here
+      var API_KEY = '123456'; // <-- Change this
+      // Set base URL here (local or live)
+      var BASE_URL = 'https://familymatch.aakilarose.com/'; // <-- Change to live as needed
+
+      // Check if user is already logged in
+      if (localStorage.getItem('userId')) {
+        $scope.isLoggedIn = true;
+        $scope.userId = localStorage.getItem('userId');
+      }
+
+      $scope.login = function() {
+        $scope.loginError = '';
+        // Prepare data for x-www-form-urlencoded
+        var data = Object.keys($scope.loginData)
+          .map(function(key) {
+            return encodeURIComponent(key) + '=' + encodeURIComponent($scope.loginData[key]);
+          })
+          .join('&');
+
+        $http({
+          method: 'POST',
+          url: BASE_URL + 'api/login',
+          data: data,
+          headers: {
+            'X-API-KEY': API_KEY,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }).then(function(response) {
+          // Success: Save userId and show chat
+          var userId = response.data.userId || $scope.loginData.email;
+          localStorage.setItem('userId', userId);
+          $scope.userId = userId;
+          $scope.isLoggedIn = true;
+          // Optionally, clear messages on login
+          $scope.messages = [];
+        }, function(error) {
+          $scope.loginError = 'Invalid credentials or server error';
+        });
+      };
+
+      $scope.logout = function() {
+        localStorage.removeItem('userId');
+        $scope.isLoggedIn = false;
+        $scope.userId = null;
+        $scope.loginData = {};
+      };
+
+      $scope.sendMessage = function() {
+        if ($scope.newMessage && $scope.isLoggedIn) {
+          var now = new Date();
+          var time = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+          socket.emit("change_heading", { uid: $scope.userId, msg: $scope.newMessage });
+          $scope.messages.push({
+            uid: $scope.userId,
+            msg: $scope.newMessage,
+            time: time
+          });
+          $scope.newMessage = '';
+          // Auto-scroll to bottom
+          $timeout(function() {
+            var chatBody = document.querySelector('.card-body');
+            if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+          }, 100);
+        }
+      };
+
+      // Listen for incoming messages
+      socket.on("update_heading", function(data) {
+        var now = new Date();
+        var time = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        $scope.$apply(function() {
+          $scope.messages.push({
+            uid: data.uid,
+            msg: data.msg,
+            time: time
+          });
+        });
+      });
+    });
+  </script>
+  <style>
+    .text-left.my-msg {
+      text-align: left;
+      background: #d1ffd6;
+      border-radius: 10px 10px 10px 0;
+      padding: 5px 10px;
+      margin: 5px 0 5px 0;
+      max-width: 70%;
+      display: inline-block;
+    }
+    .text-right.other-msg {
+      text-align: right;
+      background: #e6e6e6;
+      border-radius: 10px 10px 0 10px;
+      padding: 5px 10px;
+      margin: 5px 0 5px auto;
+      max-width: 70%;
+      display: inline-block;
+      float: right;
+    }
+  </style>
+</body>
+</html> 
